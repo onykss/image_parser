@@ -21,7 +21,7 @@ def main():
     collected_images = 0
 
     arg_parser = argparse.ArgumentParser(description="Парсер изображений из открытых источников"
-                                                 "\n(google images, unsplash, istockphoto)")
+                                                 "\n(google images, unsplash, freepic)")
     arg_parser.add_argument("--query", required=True,
                         help="Ключевое слово для поиска изображений. Если используется фраза, "
                              "то записывать слова нужно через \"_\"")
@@ -34,7 +34,7 @@ def main():
     args = arg_parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
-    google_url, unsplash_url, istock_url = parser.get_urls(args.query)
+    google_url, unsplash_url, freepik = parser.get_urls(args.query)
     manager = DriverManager(args.browser)
     driver = manager.get_driver()
 
@@ -42,7 +42,7 @@ def main():
         driver.get("https://www.google.com")
         logging.info("Соединение с браузером установлено")
 
-        collected_images += parser.parse_images_from_istock(istock_url, args.limit, args.output_dir, driver,
+        collected_images += parser.parse_images_from_freepik(freepik, args.limit, args.output_dir, driver,
                                                             collected_images)
         if collected_images < args.limit:
             collected_images += parser.parse_images_from_google(google_url, args.limit, args.output_dir, driver,

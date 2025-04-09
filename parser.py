@@ -1,15 +1,21 @@
-# остальное
+
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.common.exceptions import NoSuchElementException
-# скачивание изображений
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 import time
-# сбор аргументов и проверка браузера
+
 import shutil
 import subprocess
 import logging
 
 import downloader
+
+from dotenv import load_dotenv
+import os
+import requests
 
 # Настройка логирования
 logging.basicConfig(
@@ -39,9 +45,9 @@ def get_urls(query):
                    "IjyZQ4wRYqiNwAXgAkAEAmAG_AaABjQuqAQMwLji4AQPIAQD4AQGYAgmgAr8LwgINEAAYgAQYsQMYQxi")
     google_url += ("KBcICBhAAGAcYHsICCxAAGIAEGLEDGIMBwgIOEAAYgAQYsQMYgwEYigXCA"
                    "hAQABiABBixAxhDGIMBGIoFmAMAiAYBkgcDMS44oAftJ7IHAzAuOLgHtgs&sclient=img")
+    freepik = words.replace("_", " ")
     unsplash_url = "https://unsplash.com/s/photos/" + words.replace("_", "-")
-    istock_url = "https://www.istockphoto.com/ru/search/2/image?phrase=" + words.replace("_", "%20") + "&page=1"
-    return google_url, unsplash_url, istock_url
+    return google_url, unsplash_url, freepik
 
 
 def parse_images_from_google(url, limit, out_dir, driver, collected_images):
@@ -117,59 +123,64 @@ def parse_images_from_unsplash(url, limit, out_dir, driver, collected_images):
     return imgs_counter
 
 
-def get_new_page(driver):
-    """
-    Загружает новую страницу на сайте IStockPhoto
-    И собирает блоки с изображениями
-
-    :param driver: webdriver
-    :return: Блоки с изображениями
-    """
-    try:
-        next_button = driver.find_element(By.CSS_SELECTOR, "[data-testid=\"pagination-button-next\"]")
-        next_url = next_button.get_attribute("href")
-        driver.get(next_url)
-        image_blocks = driver.find_elements(By.TAG_NAME, "img")
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)
-    except NoSuchElementException:
-        return None
-    return image_blocks
-
-
-def parse_images_from_istock(url, limit, out_dir, driver, collected_images):
+def parse_images_from_freepik(query, limit, out_dir, driver, collected_images):
     """
     Собирает ссылки на изображения из IStockPhoto
 
-    :param url: Ссылка на запрос
+    :param query: запрос
     :param limit: Предельное количество изображений
     :param out_dir: Директория для загрузки
     :param driver: Webdriver
     :param collected_images: Количество собранных изображений
     :return: Количество собранных изображений за вызов функции.
     """
-    logging.info("Поиск изображений в istockphoto")
+    logging.info("Поиск изображений в freepik (необходим API ключ)")
 
-    driver.get(url)
-    image_blocks = driver.find_elements(By.TAG_NAME, "img")
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(2)
+    try:
+        load_dotenv()
 
-    imgs_counter = 0
+        api_key = os.getenv("FREEPIK_API_KEY")
+        if not api_key:
+            logging.error("Не удается получить API ключ")
+            return 0
+    except:
+        logging.info("Для работы с freepik необходим API ключ")
+        return 0
 
-    stop = False
-    while (collected_images + imgs_counter) <= limit and not stop:
-        image_urls = []
-        for image_block in image_blocks:
-            image_url = image_block.get_attribute("src")
-            if "media" in image_url:
-                image_urls.append(image_url)
+    headers = {
+        "x-freepik-api-key": api_key
+    }
 
-        imgs_counter += downloader.download_images(limit=limit, image_urls=image_urls, out_dir=out_dir,
-                                   collected_images=(collected_images + imgs_counter))
-        if (collected_images + imgs_counter) < limit:
-            image_blocks = get_new_page(driver)
-            if not image_blocks:
-                break
+    url = "https://api.freepik.com/v1/resources"
 
-    return imgs_counter
+    params = {
+        "term": query,
+        "page": 1,
+        "limit": 100,
+        "order": "relevance",
+        "filters[license][freemium]": 1,
+        "filters[content_type][photo]": 1
+    }
+
+    downloaded_count = 0
+
+    while downloaded_count < limit and params["page"] < 100:
+        response = requests.get(url, params=params, headers=headers)
+        if response.status_code != 200:
+            logging.error(f"Ошибка при запросе к API: {response.status_code}, {response.text}")
+            break
+
+        data = response.json()
+        image_urls = [
+            item["image"]["source"]["url"]
+            for item in data["data"]
+            if "image" in item and "source" in item["image"] and "url" in item["image"]["source"]
+        ]
+
+        downloaded_count += downloader.download_images(limit=limit, image_urls=image_urls, out_dir=out_dir,
+                                   collected_images=(collected_images + downloaded_count))
+
+        params["page"] += 1
+
+    return downloaded_count
+

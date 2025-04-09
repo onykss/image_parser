@@ -27,6 +27,7 @@ class DriverManager:
         elif browser == "edge":
             options = EdgeOptions()
             options.add_argument("--headless")
+            options.add_argument("--window-size=1920,1080")
             options.add_argument("--log-level=3")
             options.add_argument("--ignore-certificate-errors")  # Игнорировать ошибки сертификатов
             options.add_argument("--disable-web-security")  # Отключить проверку безопасности
